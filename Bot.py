@@ -1,3 +1,4 @@
+import os
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -8,7 +9,7 @@ from telegram.ext import (
 )
 import sqlite3
 
-TOKEN = "8771496677:AAEUvBOZvdeCrU_ro2T0q5bzRmV7XMvLyY0"
+TOKEN = os.environ.get("BOT_TOKEN")
 
 # ---------------- DATABASE SETUP ----------------
 conn = sqlite3.connect("trades.db", check_same_thread=False)
