@@ -1,4 +1,6 @@
 import os
+import aiosqlite
+import logging
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -7,25 +9,29 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-import sqlite3
 
-TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("Set BOT_TOKEN environment variable")
 
-# ---------------- DATABASE SETUP ----------------
-conn = sqlite3.connect("trades.db", check_same_thread=False)
-cursor = conn.cursor()
+conn = None
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pair TEXT,
-    rr REAL,
-    result TEXT,
-    emotion TEXT,
-    raw_text TEXT
-)
-""")
-conn.commit()
+async def init_db():
+    global conn
+    conn = await aiosqlite.connect("trades.db")
+    cursor = await conn.cursor()
+    await cursor.execute("""
+    CREATE TABLE IF NOT EXISTS trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pair TEXT,
+        rr REAL,
+        result TEXT,
+        emotion TEXT,
+        notes TEXT,
+        raw_text TEXT
+    )
+    """)
+    await conn.commit()
 
 # ---------------- MESSAGE HANDLER ----------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,22 +60,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             rr = 0
 
-        cursor.execute("""
-        INSERT INTO trades (pair, rr, result, emotion, raw_text)
-        VALUES (?, ?, ?, ?, ?)
-        """, (pair, rr, result, emotion, text))
+        cursor = await conn.cursor()
+        await cursor.execute("""
+        INSERT INTO trades (pair, rr, result, emotion, notes, raw_text)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (pair, rr, result, emotion, notes, text))
 
-        conn.commit()
+        await conn.commit()
 
         await update.message.reply_text("Trade saved ✅")
 
     except Exception as e:
+        logging.error(f"Error handling message: {e}")
         await update.message.reply_text(
             "Format error ❌\nUse:\nPair: GBPJPY\nRR: 1:5\nResult: Win"
         )
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT pair, rr, result FROM trades")
-    rows = cursor.fetchall()
+    cursor = await conn.cursor()
+    await cursor.execute("SELECT pair, rr, result FROM trades")
+    rows = await cursor.fetchall()
 
     if not rows:
         await update.message.reply_text("No trades yet ❌")
@@ -82,20 +91,21 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pair_stats = {}
 
     for pair, rr, result in rows:
-        rr_total += rr
-
         if result.lower() == "win":
             wins += 1
+            rr_total += rr
+        else:
+            rr_total -= 1  # assuming risk=1
 
         if pair not in pair_stats:
             pair_stats[pair] = {"wins": 0, "losses": 0, "rr": 0}
 
         if result.lower() == "win":
             pair_stats[pair]["wins"] += 1
+            pair_stats[pair]["rr"] += rr
         else:
             pair_stats[pair]["losses"] += 1
-
-        pair_stats[pair]["rr"] += rr if result.lower() == "win" else -rr
+            pair_stats[pair]["rr"] -= 1
 
     win_rate = (wins / total) * 100
     avg_rr = rr_total / total
@@ -119,9 +129,16 @@ Average RR: {avg_rr:.2f}
     await update.message.reply_text(report_text)
 
 # ---------------- BOT START ----------------
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-app.add_handler(CommandHandler("report", report))
+import asyncio
 
-print("Bot running...")
-app.run_polling()
+async def main():
+    await init_db()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("report", report))
+
+    print("Bot running...")
+    await app.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
