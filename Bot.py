@@ -49,10 +49,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if ":" in line:
                 key, value = line.split(":", 1)
                 data[key.strip().lower()] = value.strip()
-
-        pair = data.get("pair", "unknown")
-        rr_raw = data.get("rr", "0:1")
-        result = data.get("result", "unknown")
+try:
+    if ":" in rr_raw:
+        parts = rr_raw.split(":")
+        rr = float(parts[1]) / float(parts[0])  # 5/1 = 5.0 or 8/1 = 8.0
+    else:
+        rr = float(rr_raw)
+except:
+    rr = 0.0
         emotion = data.get("emotion", "unknown")
         notes = data.get("notes", "")
 
