@@ -45,24 +45,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = {}
 
+        # parse input
         for line in lines:
             if ":" in line:
                 key, value = line.split(":", 1)
                 data[key.strip().lower()] = value.strip()
-        # Convert RR "1:5" → 5.0
+
+        # required fields
+        pair = data.get("pair")
+        rr_raw = data.get("rr")
+        result = data.get("result")
+
+        # optional fields
+        emotion = data.get("emotion", "")
+        notes = data.get("notes", "")
+
+        if not pair or not rr_raw or not result:
+            await update.message.reply_text(
+                "Format error ❌\nUse:\nPair: GBPJPY\nRR: 1:5\nResult: Win"
+            )
+            return
+
+        # convert RR safely
         try:
             if ":" in rr_raw:
-                parts = rr_raw.split(":")
-                rr = float(parts[1]) / float(parts[0])
+                a, b = rr_raw.split(":")
+                rr = float(b) / float(a)
             else:
                 rr = float(rr_raw)
         except:
             rr = 0.0
-        # Convert RR "1:5" → 5
-        try:
-            rr = float(rr_raw.split(":")[1])
-        except:
-            rr = 0
 
         cursor = await conn.cursor()
         await cursor.execute("""
@@ -76,9 +88,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Error: {e}")
-        await update.message.reply_text(
-            "Format error ❌\nUse:\nPair: GBPJPY\nRR: 1:5\nResult: Win"
-        )
+        await update.message.reply_text("Something went wrong ❌")
 
 # ---------------- REPORT ----------------
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
