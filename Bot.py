@@ -132,18 +132,13 @@ Average RR: {avg_rr:.2f}
     await update.message.reply_text(report_text)
 
 # ---------------- MAIN ----------------
-async def main():
+async def on_startup(app):
     await init_db()
 
-    app = ApplicationBuilder().token(TOKEN).build()
+app = ApplicationBuilder().token(TOKEN).post_init(on_startup).build()
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CommandHandler("report", report))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(CommandHandler("report", report))
 
-    print("Bot running...")
-    app.run_polling()  # ✅ FIXED
-
-# ---------------- RUN ----------------
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+print("Bot running...")
+app.run_polling()
