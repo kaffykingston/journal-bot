@@ -10,12 +10,16 @@ from telegram.ext import (
     ContextTypes
 )
 
+# ---------------- CONFIG ----------------
+logging.basicConfig(level=logging.INFO)
+
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("Set BOT_TOKEN environment variable")
 
 conn = None
 
+# ---------------- DATABASE ----------------
 async def init_db():
     global conn
     conn = await aiosqlite.connect("trades.db")
@@ -35,9 +39,8 @@ async def init_db():
 
 # ---------------- MESSAGE HANDLER ----------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
     try:
+        text = update.message.text
         lines = text.split("\n")
 
         data = {}
@@ -48,13 +51,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 data[key.strip().lower()] = value.strip()
 
         pair = data.get("pair", "unknown")
-        risk = data.get("risk", "0%")
         rr_raw = data.get("rr", "0:1")
         result = data.get("result", "unknown")
         emotion = data.get("emotion", "unknown")
         notes = data.get("notes", "")
 
-        # convert RR "1:5" → 5
+        # Convert RR "1:5" → 5
         try:
             rr = float(rr_raw.split(":")[1])
         except:
@@ -71,10 +73,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Trade saved ✅")
 
     except Exception as e:
-        logging.error(f"Error handling message: {e}")
+        logging.error(f"Error: {e}")
         await update.message.reply_text(
             "Format error ❌\nUse:\nPair: GBPJPY\nRR: 1:5\nResult: Win"
         )
+
+# ---------------- REPORT ----------------
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor = await conn.cursor()
     await cursor.execute("SELECT pair, rr, result FROM trades")
@@ -87,7 +91,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = len(rows)
     wins = 0
     rr_total = 0
-
     pair_stats = {}
 
     for pair, rr, result in rows:
@@ -95,7 +98,7 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             wins += 1
             rr_total += rr
         else:
-            rr_total -= 1  # assuming risk=1
+            rr_total -= 1  # assume risk = 1
 
         if pair not in pair_stats:
             pair_stats[pair] = {"wins": 0, "losses": 0, "rr": 0}
@@ -128,17 +131,19 @@ Average RR: {avg_rr:.2f}
 
     await update.message.reply_text(report_text)
 
-# ---------------- BOT START ----------------
-import asyncio
-
+# ---------------- MAIN ----------------
 async def main():
     await init_db()
+
     app = ApplicationBuilder().token(TOKEN).build()
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CommandHandler("report", report))
 
     print("Bot running...")
-    await app.run_polling()
+    app.run_polling()  # ✅ FIXED
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
