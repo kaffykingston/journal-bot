@@ -1,2 +1,2 @@
-python-telegram-bot==20.7
-aiosqlite==0.17.0
+python-telegram-bot
+aiosqlite
