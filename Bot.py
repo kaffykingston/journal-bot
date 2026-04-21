@@ -1,6 +1,7 @@
 import os
 import aiosqlite
 import logging
+import traceback
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -38,9 +39,13 @@ async def init_db():
 
 # ---------------- MESSAGE HANDLER ----------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
-
     try:
+        # ✅ ignore non-text messages
+        if not update.message or not update.message.text:
+            return
+
+        text = update.message.text.lower()
+
         pair = "unknown"
         rr = 0
         result = "unknown"
@@ -85,9 +90,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Saved ✅\nPair: {pair}\nRR: {rr}\nResult: {result}"
         )
 
-    except Exception as e:
-        print("ERROR:", e)  # 👈 shows real error in logs
-        await update.message.reply_text("Still fixing… but saved attempt ⚠️")
+    except Exception:
+        traceback.print_exc()
+        await update.message.reply_text("Error occurred ❌")
+
 # ---------------- REPORT ----------------
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor = await conn.cursor()
