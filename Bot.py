@@ -41,29 +41,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
 
     try:
-        # Flexible parsing
         pair = "unknown"
         rr = 0
         result = "unknown"
         emotion = "unknown"
 
-        # detect pair (simple logic)
+        # ---- PAIR ----
         if "gj" in text or "gbpjpy" in text:
             pair = "GBPJPY"
+        elif "eu" in text or "eurusd" in text:
+            pair = "EURUSD"
 
-        # detect RR
+        # ---- RR ----
         import re
-        rr_match = re.search(r'(\d+)\s*[:]?rr|1:(\d+)', text)
+        rr_match = re.search(r'1:(\d+)', text)
         if rr_match:
-            rr = float(rr_match.group(1) or rr_match.group(2))
+            rr = float(rr_match.group(1))
 
-        # detect result
+        # ---- RESULT ----
         if "win" in text:
             result = "win"
         elif "loss" in text:
             result = "loss"
 
-        # detect emotion
+        # ---- EMOTION ----
         if "fear" in text:
             emotion = "fear"
         elif "calm" in text:
@@ -71,6 +72,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif "greed" in text:
             emotion = "greed"
 
+        # ---- SAVE ----
         cursor = await conn.cursor()
         await cursor.execute("""
         INSERT INTO trades (pair, rr, result, emotion, notes, raw_text)
@@ -84,9 +86,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        logging.error(e)
-        await update.message.reply_text("Something went wrong ❌")
-
+        print("ERROR:", e)  # 👈 shows real error in logs
+        await update.message.reply_text("Still fixing… but saved attempt ⚠️")
 # ---------------- REPORT ----------------
 async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor = await conn.cursor()
