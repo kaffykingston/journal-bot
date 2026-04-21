@@ -10,7 +10,6 @@ from telegram.ext import (
     ContextTypes
 )
 
-# ---------------- CONFIG ----------------
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -39,55 +38,53 @@ async def init_db():
 
 # ---------------- MESSAGE HANDLER ----------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower()
+
     try:
-        text = update.message.text
-        lines = text.split("\n")
+        # Flexible parsing
+        pair = "unknown"
+        rr = 0
+        result = "unknown"
+        emotion = "unknown"
 
-        data = {}
+        # detect pair (simple logic)
+        if "gj" in text or "gbpjpy" in text:
+            pair = "GBPJPY"
 
-        # parse input
-        for line in lines:
-            if ":" in line:
-                key, value = line.split(":", 1)
-                data[key.strip().lower()] = value.strip()
+        # detect RR
+        import re
+        rr_match = re.search(r'(\d+)\s*[:]?rr|1:(\d+)', text)
+        if rr_match:
+            rr = float(rr_match.group(1) or rr_match.group(2))
 
-        # required fields
-        pair = data.get("pair")
-        rr_raw = data.get("rr")
-        result = data.get("result")
+        # detect result
+        if "win" in text:
+            result = "win"
+        elif "loss" in text:
+            result = "loss"
 
-        # optional fields
-        emotion = data.get("emotion", "")
-        notes = data.get("notes", "")
-
-        if not pair or not rr_raw or not result:
-            await update.message.reply_text(
-                "Format error ❌\nUse:\nPair: GBPJPY\nRR: 1:5\nResult: Win"
-            )
-            return
-
-        # convert RR safely
-        try:
-            if ":" in rr_raw:
-                a, b = rr_raw.split(":")
-                rr = float(b) / float(a)
-            else:
-                rr = float(rr_raw)
-        except:
-            rr = 0.0
+        # detect emotion
+        if "fear" in text:
+            emotion = "fear"
+        elif "calm" in text:
+            emotion = "calm"
+        elif "greed" in text:
+            emotion = "greed"
 
         cursor = await conn.cursor()
         await cursor.execute("""
         INSERT INTO trades (pair, rr, result, emotion, notes, raw_text)
         VALUES (?, ?, ?, ?, ?, ?)
-        """, (pair, rr, result, emotion, notes, text))
+        """, (pair, rr, result, emotion, "", text))
 
         await conn.commit()
 
-        await update.message.reply_text("Trade saved ✅")
+        await update.message.reply_text(
+            f"Saved ✅\nPair: {pair}\nRR: {rr}\nResult: {result}"
+        )
 
     except Exception as e:
-        logging.error(f"Error: {e}")
+        logging.error(e)
         await update.message.reply_text("Something went wrong ❌")
 
 # ---------------- REPORT ----------------
@@ -101,49 +98,14 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     total = len(rows)
-    wins = 0
-    rr_total = 0
-    pair_stats = {}
-
-    for pair, rr, result in rows:
-        if result.lower() == "win":
-            wins += 1
-            rr_total += rr
-        else:
-            rr_total -= 1  # assume risk = 1
-
-        if pair not in pair_stats:
-            pair_stats[pair] = {"wins": 0, "losses": 0, "rr": 0}
-
-        if result.lower() == "win":
-            pair_stats[pair]["wins"] += 1
-            pair_stats[pair]["rr"] += rr
-        else:
-            pair_stats[pair]["losses"] += 1
-            pair_stats[pair]["rr"] -= 1
-
+    wins = sum(1 for _, _, r in rows if r == "win")
     win_rate = (wins / total) * 100
-    avg_rr = rr_total / total
 
-    best_pair = max(pair_stats.items(), key=lambda x: x[1]["rr"])[0]
-    worst_pair = min(pair_stats.items(), key=lambda x: x[1]["rr"])[0]
-    most_traded = max(pair_stats.items(), key=lambda x: (x[1]["wins"] + x[1]["losses"]))[0]
+    await update.message.reply_text(
+        f"📊 Trades: {total}\nWin rate: {win_rate:.2f}%"
+    )
 
-    report_text = f"""
-📊 TRADING REPORT
-
-Total Trades: {total}
-Win Rate: {win_rate:.2f}%
-Average RR: {avg_rr:.2f}
-
-🥇 Best Pair: {best_pair}
-🔻 Worst Pair: {worst_pair}
-📈 Most Traded: {most_traded}
-"""
-
-    await update.message.reply_text(report_text)
-
-# ---------------- MAIN ----------------
+# ---------------- START ----------------
 async def on_startup(app):
     await init_db()
 
